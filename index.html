@@ -1,0 +1,166 @@
+<!-- Based on https://github.com/devanlai/webdfu/tree/gh-pages/dfu-util -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebDFU STM32Fx Firmware Flasher</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <script src="dfu.js"></script>
+    <script src="dfuse.js"></script>
+    <script src="FileSaver.js"></script>
+    <script src="dfu-util.js"></script>
+
+    <style>
+      html, body {
+        height: 100%;
+        overflow: hidden; /* Prevent scrolling on body */
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        background-color: #f8f9fa;
+      }
+      #app-container {
+        flex: 1 1 auto;
+        display: flex;
+        overflow: hidden; /* Prevent scrolling on container */
+      }
+      #sidebar {
+        flex: 0 0 400px; /* Fixed width for sidebar */
+        background-color: #e9ecef;
+        padding: 1.5rem;
+        overflow-y: auto; /* Enable scrolling for sidebar content */
+        border-right: 1px solid #dee2e6;
+      }
+      #main-content {
+        flex: 1 1 auto;
+        padding: 1.5rem;
+        overflow-y: auto; /* Enable scrolling for main content */
+        display: flex;
+        flex-direction: column;
+      }
+      #downloadLog {
+        flex-grow: 1; /* Make log area fill remaining height */
+        resize: none;
+        font-family: monospace;
+        font-size: 0.85rem;
+      }
+      #usbInfo {
+        font-family: monospace;
+        white-space: pre-wrap;
+        font-size: 0.8rem;
+        word-break: break-all;
+      }
+      #dfuInfo {
+        font-family: monospace;
+        font-size: 0.75rem;
+      }
+      /* Custom DFU interface dialog styling */
+      label.radio {
+        display: block;
+        padding: 0.5rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+        background-color: #fff;
+      }
+      label.radio:hover {
+        background-color: #f8f9fa;
+      }
+      label.radio input {
+        margin-right: 0.5rem;
+      }
+    </style>
+</head>
+<body>
+
+    <!-- Top Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark flex-shrink-0">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">WebDFU Firmware Flasher</a>
+        </div>
+    </nav>
+
+    <!-- Main Application Container -->
+    <div id="app-container">
+
+        <!-- Sidebar for Controls -->
+        <div id="sidebar">
+            <div class="d-flex flex-column gap-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title border-bottom pb-2">Connection</h5>
+                        <p id="status" class="mb-2">Disconnected</p>
+                        <div class="d-flex gap-2">
+                            <button id="connect" class="btn btn-primary btn-sm">Select DFU device</button>
+                            <button id="detach" class="btn btn-secondary btn-sm" style="display: none;">Switch to DFU Mode</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title border-bottom pb-2">Firmware Flash</h5>
+                        <form id="configForm" onsubmit="return false;">
+                            <div class="mb-3">
+                                <label for="transferSize" class="form-label small fw-bold">Transfer Size</label>
+                                <input type="number" name="transferSize" id="transferSize" class="form-control form-control-sm" value="1024"/>
+                            </div>
+                            <div id="dfuseFields" hidden="true" class="mb-3">
+                                <label for="dfuseStartAddress" class="form-label small fw-bold">DfuSe Start Address</label>
+                                <input type="text" name="dfuseStartAddress" id="dfuseStartAddress" class="form-control form-control-sm" title="Initial memory address to write to (hex)" size="10" pattern="0x[A-Fa-f0-9]+"/>
+                            </div>
+                            <div class="mb-3">
+                                <label for="firmwareFile" class="form-label small fw-bold">Firmware File (.bin or .hex)</label>
+                                <input type="file" id="firmwareFile" name="file" class="form-control form-control-sm" disabled="true" accept=".bin,.hex"/>
+                            </div>
+                            <button id="download" class="btn btn-success w-100" disabled="true">Flash Firmware</button>
+                        </form>
+                    </div>
+                </div>
+
+                <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#collapseExample" aria-expanded="false" aria-controls="collapseExample">
+                  Device Info
+                </button>
+                <div class="collapse" id="collapseExample">
+                  <div class="card shadow-sm">
+                      <div class="card-body">
+                          <h5 class="card-title border-bottom pb-2">Device Information</h5>
+                          <div id="usbInfo" class="alert alert-light p-2 small">Not connected</div>
+                          <div id="dfuInfo" class="alert alert-light p-2 small"></div>
+                      </div>
+                  </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Main Content for Log -->
+        <div id="main-content">
+            <h5 class="border-bottom pb-2 mb-3">Log</h5>
+            <progress id="downloadProgress" class="progress w-100 mb-2" value="0" max="100" hidden></progress>
+            <textarea class="form-control" id="downloadLog" readonly></textarea>
+        </div>
+    </div>
+
+    <!-- Dialog for multiple interfaces -->
+    <dialog id="interfaceDialog">
+      <h4>Multiple DFU Interfaces Found</h4>
+      <p>Please select the correct interface for flashing:</p>
+      <form id="interfaceForm" method="dialog">
+        <!-- Radio buttons will be populated by JS -->
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="interfaceDialog.close()">Cancel</button>
+            <button id="selectInterface" type="submit" class="btn btn-primary btn-sm">Select</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
