@@ -361,7 +361,7 @@ var device = null;
             isDeviceReady = false;
             updateFlashButtonState();
 
-            connectButton.textContent = "Select DFU device";
+            connectButton.innerHTML = `<i class="bi bi-usb-drive-fill"></i> Select DFU device`;
             connectButton.classList.remove('btn-danger');
             connectButton.classList.add('btn-primary');
 
@@ -452,7 +452,7 @@ var device = null;
 
             statusDisplay.textContent = `Connected to ${device.device_.productName || "Untitled Device"}`;
 
-            connectButton.textContent = 'Disconnect';
+            connectButton.innerHTML = `<i class="bi bi-x-circle-fill"></i> Disconnect`;
             connectButton.classList.remove('btn-primary');
             connectButton.classList.add('btn-danger');
 
