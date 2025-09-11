@@ -587,6 +587,9 @@ var device = null;
                 setLogContext(downloadLog);
                 clearLog(downloadLog);
 
+                // --- MODIFIED: Get lastModified from file object ---
+                const lastModified = file.lastModified;
+
                 if (file.name.toLowerCase().endsWith(".hex")) {
                     reader.onload = function() {
                         try {
@@ -597,11 +600,11 @@ var device = null;
                                dfuseStartAddressField.value = "0x" + result.startAddress.toString(16);
                                dfuseStartAddressField.dispatchEvent(new Event('change'));
                             }
-                            // --- MODIFIED: Dispatch custom event with info ---
                             const event = new CustomEvent('firmware:info', {
                                 detail: {
                                     fileSize: firmwareFile.byteLength,
-                                    startAddress: result.startAddress
+                                    startAddress: result.startAddress,
+                                    lastModified: lastModified
                                 }
                             });
                             firmwareFileField.dispatchEvent(event);
@@ -620,11 +623,11 @@ var device = null;
                     reader.onload = function() {
                         firmwareFile = reader.result;
                         logInfo(`Loaded BIN file: ${file.name}, Size: ${firmwareFile.byteLength} bytes`);
-                        // --- MODIFIED: Dispatch custom event with info ---
                         const event = new CustomEvent('firmware:info', {
                             detail: {
                                 fileSize: firmwareFile.byteLength,
-                                startAddress: null // .bin files don't have a start address
+                                startAddress: null,
+                                lastModified: lastModified
                             }
                         });
                         firmwareFileField.dispatchEvent(event);

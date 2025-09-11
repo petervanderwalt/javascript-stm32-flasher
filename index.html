@@ -168,6 +168,7 @@
                                     <i class="bi bi-file-earmark-check-fill fs-1 text-success"></i>
                                     <p id="file-name-display" class="mt-2 mb-0"></p>
                                     <p id="file-info-display" class="drop-zone-subtext mt-1 mb-0"></p>
+                                    <p id="file-modified-display" class="drop-zone-subtext mt-1 mb-0 small fst-italic"></p>
                                 </div>
                             </label>
 
@@ -203,13 +204,15 @@
                 <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDeviceInfo" aria-expanded="false" aria-controls="collapseDeviceInfo">
                   Device Info
                 </button>
-
-                  <div class="collapse" id="collapseDeviceInfo">
-
+                <div class="collapse" id="collapseDeviceInfo">
+                  <div class="card shadow-sm">
+                      <div class="card-body">
+                          <h5 class="card-title border-bottom pb-2">Device Information</h5>
                           <div id="usbInfo" class="alert alert-light p-2 small">Not connected</div>
                           <div id="dfuInfo" class="alert alert-light p-2 small"></div>
-
+                      </div>
                   </div>
+                </div>
 
             </div>
         </div>
@@ -241,18 +244,47 @@
             const dropZone = document.querySelector('#drop-zone');
             const firmwareFileInput = document.querySelector('#firmwareFile');
             const fileNameDisplay = document.querySelector('#file-name-display');
-            // --- NEW: Get the info display element ---
             const fileInfoDisplay = document.querySelector('#file-info-display');
+            const fileModifiedDisplay = document.querySelector('#file-modified-display');
+
+            // --- NEW: Helper function to format the time difference ---
+            function formatTimeAgo(timestamp) {
+                const now = new Date();
+                const secondsPast = (now.getTime() - timestamp) / 1000;
+
+                if (secondsPast < 60) {
+                    return 'Modified just now';
+                }
+                const intervals = {
+                    day: 86400,
+                    hour: 3600,
+                    minute: 60,
+                };
+                let result = 'Modified ';
+                let seconds = secondsPast;
+
+                for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+                    const count = Math.floor(seconds / secondsInUnit);
+                    if (count > 0) {
+                        result += `${count} ${unit}${count > 1 ? 's' : ''} `;
+                        seconds %= secondsInUnit;
+                    }
+                }
+                result += 'ago';
+                return result;
+            }
 
             function updateFileDisplay(file) {
                 if (file) {
                     fileNameDisplay.textContent = file.name;
-                    fileInfoDisplay.textContent = 'Parsing file...'; // Give initial feedback
+                    fileInfoDisplay.textContent = 'Parsing file...';
+                    fileModifiedDisplay.textContent = '';
                     dropZone.classList.add('has-file');
                 } else {
                     dropZone.classList.remove('has-file');
                     fileNameDisplay.textContent = '';
-                    fileInfoDisplay.textContent = ''; // Clear info
+                    fileInfoDisplay.textContent = '';
+                    fileModifiedDisplay.textContent = '';
                 }
             }
 
@@ -264,17 +296,20 @@
                 }
             });
 
-            // --- NEW: Listen for custom event with parsed data ---
             firmwareFileInput.addEventListener('firmware:info', (event) => {
-                const { fileSize, startAddress } = event.detail;
+                const { fileSize, startAddress, lastModified } = event.detail;
                 if (fileSize) {
                     let infoText = `Size: ${fileSize} bytes`;
                     if (startAddress !== null) {
                         infoText += ` / Start: 0x${startAddress.toString(16).toUpperCase()}`;
                     }
                     fileInfoDisplay.textContent = infoText;
+                    if (lastModified) {
+                        fileModifiedDisplay.textContent = formatTimeAgo(lastModified);
+                    }
                 } else {
                     fileInfoDisplay.textContent = 'Error parsing file!';
+                    fileModifiedDisplay.textContent = '';
                 }
             });
 
