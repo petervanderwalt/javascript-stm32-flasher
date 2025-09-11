@@ -219,7 +219,7 @@ var dfuse = {};
         }
 
         this.logInfo("Erasing DFU device memory");
-        
+
         let bytes_sent = 0;
         let expected_size = data.byteLength;
 
@@ -263,7 +263,7 @@ var dfuse = {};
         }
         this.logInfo(`Wrote ${bytes_sent} bytes`);
 
-        this.logInfo("Manifesting new firmware");
+        this.logInfo("Booting new firmware");
         try {
             await this.dfuseCommand(dfuse.SET_ADDRESS, startAddress, 4);
             await this.download(new ArrayBuffer(), 0);

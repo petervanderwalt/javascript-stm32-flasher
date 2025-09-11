@@ -617,7 +617,7 @@ var dfu = {};
         }
 
         this.logInfo("Wrote " + bytes_sent + " bytes");
-        this.logInfo("Manifesting new firmware");
+        this.logInfo("Booting new firmware");
 
         if (manifestationTolerant) {
             // Transition to MANIFEST_SYNC state
