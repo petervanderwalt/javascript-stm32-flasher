@@ -8,6 +8,8 @@
     <title>WebDFU STM32Fx Firmware Flasher</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
 
     <script src="dfu.js"></script>
     <script src="dfuse.js"></script>
@@ -17,7 +19,7 @@
     <style>
       html, body {
         height: 100%;
-        overflow: hidden; /* Prevent scrolling on body */
+        overflow: hidden;
       }
       body {
         display: flex;
@@ -27,39 +29,34 @@
       #app-container {
         flex: 1 1 auto;
         display: flex;
-        overflow: hidden; /* Prevent scrolling on container */
+        overflow: hidden;
       }
       #sidebar {
-        flex: 0 0 400px; /* Fixed width for sidebar */
+        flex: 0 0 400px;
         background-color: #e9ecef;
         padding: 1.5rem;
-        overflow-y: auto; /* Enable scrolling for sidebar content */
+        overflow-y: auto;
         border-right: 1px solid #dee2e6;
       }
       #main-content {
         flex: 1 1 auto;
         padding: 1.5rem;
-        overflow-y: auto; /* Enable scrolling for main content */
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
       }
       #downloadLog {
-        flex-grow: 1; /* Make log area fill remaining height */
+        flex-grow: 1;
         resize: none;
         font-family: monospace;
         font-size: 0.85rem;
       }
-      #usbInfo {
+      #usbInfo, #dfuInfo {
         font-family: monospace;
         white-space: pre-wrap;
         font-size: 0.8rem;
         word-break: break-all;
       }
-      #dfuInfo {
-        font-family: monospace;
-        font-size: 0.75rem;
-      }
-      /* Custom DFU interface dialog styling */
       label.radio {
         display: block;
         padding: 0.5rem;
@@ -73,6 +70,59 @@
       }
       label.radio input {
         margin-right: 0.5rem;
+      }
+      .drop-zone {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        border: 2px dashed #adb5bd;
+        border-radius: 0.375rem;
+        background-color: #fff;
+        cursor: pointer;
+        transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        min-height: 150px;
+      }
+      .drop-zone:hover {
+        background-color: #f8f9fa;
+        border-color: #495057;
+      }
+      .drop-zone.is-dragging {
+        background-color: #e9ecef;
+        border-color: #0d6efd;
+        border-style: solid;
+      }
+      .drop-zone-prompt {
+        display: block;
+      }
+      .drop-zone-filename {
+        display: none;
+        font-weight: 500;
+        color: #212529;
+      }
+      .drop-zone.has-file .drop-zone-prompt {
+        display: none;
+      }
+      .drop-zone.has-file .drop-zone-filename {
+        display: block;
+      }
+      .drop-zone-icon {
+        font-size: 3rem;
+        color: #6c757d;
+      }
+      .drop-zone-text {
+        margin-top: 0.5rem;
+        font-size: 1.1rem;
+        color: #212529;
+      }
+      .drop-zone-subtext {
+        font-size: 0.9rem;
+        color: #6c757d;
+      }
+      .drop-zone.invalid .drop-zone-filename {
+        color: #dc3545;
       }
     </style>
 </head>
@@ -93,10 +143,10 @@
             <div class="d-flex flex-column gap-3">
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <h5 class="card-title border-bottom pb-2">Connection</h5>
+                        <h5 class="card-title border-bottom pb-2">1. Connection</h5>
                         <p id="status" class="mb-2">Disconnected</p>
-                        <div class="d-flex gap-2">
-                            <button id="connect" class="btn btn-primary btn-sm">Select DFU device</button>
+                        <div class="d-grid gap-2">
+                            <button id="connect" class="btn btn-primary">Select DFU device</button>
                             <button id="detach" class="btn btn-secondary btn-sm" style="display: none;">Switch to DFU Mode</button>
                         </div>
                     </div>
@@ -104,37 +154,63 @@
 
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <h5 class="card-title border-bottom pb-2">Firmware Flash</h5>
-                        <form id="configForm" onsubmit="return false;">
-                            <div class="mb-3">
-                                <label for="transferSize" class="form-label small fw-bold">Transfer Size</label>
-                                <input type="number" name="transferSize" id="transferSize" class="form-control form-control-sm" value="1024"/>
+                        <h5 class="card-title border-bottom pb-2">2. Firmware Flash</h5>
+                        <form id="configForm" onsubmit="return false;" class="d-flex flex-column gap-3">
+
+                            <label for="firmwareFile" id="drop-zone" class="drop-zone">
+                                <input type="file" id="firmwareFile" name="file" accept=".bin,.hex" hidden>
+                                <div class="drop-zone-prompt">
+                                    <i class="bi bi-cloud-arrow-up-fill drop-zone-icon"></i>
+                                    <p class="drop-zone-text mb-1"><strong>Choose a file</strong> or drag it here.</p>
+                                    <p class="drop-zone-subtext mb-0">Supports .bin and .hex</p>
+                                </div>
+                                <div class="drop-zone-filename">
+                                    <i class="bi bi-file-earmark-check-fill fs-1 text-success"></i>
+                                    <p id="file-name-display" class="mt-2 mb-0"></p>
+                                    <!-- --- NEW: Element for file details --- -->
+                                    <p id="file-info-display" class="drop-zone-subtext mt-1 mb-0"></p>
+                                </div>
+                            </label>
+
+                            <button id="download" class="btn btn-success w-100" disabled="true">
+                                <i class="bi bi-hdd-fill"></i> Flash Firmware
+                            </button>
+
+                            <div class="accordion accordion-flush" id="advancedSettingsAccordion">
+                              <div class="accordion-item">
+                                <h2 class="accordion-header" id="headingOne">
+                                  <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAdvanced" aria-expanded="false" aria-controls="collapseAdvanced">
+                                    Advanced Settings
+                                  </button>
+                                </h2>
+                                <div id="collapseAdvanced" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#advancedSettingsAccordion">
+                                  <div class="accordion-body d-flex flex-column gap-3 pt-2">
+                                    <div>
+                                        <label for="transferSize" class="form-label small fw-bold">Transfer Size</label>
+                                        <input type="number" name="transferSize" id="transferSize" class="form-control form-control-sm" value="2048"/>
+                                    </div>
+                                    <div id="dfuseFields">
+                                        <label for="dfuseStartAddress" class="form-label small fw-bold">DfuSe Start Address</label>
+                                        <input type="text" name="dfuseStartAddress" id="dfuseStartAddress" class="form-control form-control-sm" title="Initial memory address to write to (hex)" size="10" pattern="0x[A-Fa-f0-9]+"/>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <div id="dfuseFields" hidden="true" class="mb-3">
-                                <label for="dfuseStartAddress" class="form-label small fw-bold">DfuSe Start Address</label>
-                                <input type="text" name="dfuseStartAddress" id="dfuseStartAddress" class="form-control form-control-sm" title="Initial memory address to write to (hex)" size="10" pattern="0x[A-Fa-f0-9]+"/>
-                            </div>
-                            <div class="mb-3">
-                                <label for="firmwareFile" class="form-label small fw-bold">Firmware File (.bin or .hex)</label>
-                                <input type="file" id="firmwareFile" name="file" class="form-control form-control-sm" disabled="true" accept=".bin,.hex"/>
-                            </div>
-                            <button id="download" class="btn btn-success w-100" disabled="true">Flash Firmware</button>
                         </form>
                     </div>
                 </div>
 
-                <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#collapseExample" aria-expanded="false" aria-controls="collapseExample">
+                <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDeviceInfo" aria-expanded="false" aria-controls="collapseDeviceInfo">
                   Device Info
                 </button>
-                <div class="collapse" id="collapseExample">
-                  <div class="card shadow-sm">
-                      <div class="card-body">
-                          <h5 class="card-title border-bottom pb-2">Device Information</h5>
+
+                  <div class="collapse" id="collapseDeviceInfo">
+
                           <div id="usbInfo" class="alert alert-light p-2 small">Not connected</div>
                           <div id="dfuInfo" class="alert alert-light p-2 small"></div>
-                      </div>
+                      
                   </div>
-                </div>
 
             </div>
         </div>
@@ -152,7 +228,6 @@
       <h4>Multiple DFU Interfaces Found</h4>
       <p>Please select the correct interface for flashing:</p>
       <form id="interfaceForm" method="dialog">
-        <!-- Radio buttons will be populated by JS -->
         <div class="d-flex justify-content-end gap-2 mt-3">
             <button type="button" class="btn btn-secondary btn-sm" onclick="interfaceDialog.close()">Cancel</button>
             <button id="selectInterface" type="submit" class="btn btn-primary btn-sm">Select</button>
@@ -162,5 +237,96 @@
 
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropZone = document.querySelector('#drop-zone');
+            const firmwareFileInput = document.querySelector('#firmwareFile');
+            const fileNameDisplay = document.querySelector('#file-name-display');
+            // --- NEW: Get the info display element ---
+            const fileInfoDisplay = document.querySelector('#file-info-display');
+
+            function updateFileDisplay(file) {
+                if (file) {
+                    fileNameDisplay.textContent = file.name;
+                    fileInfoDisplay.textContent = 'Parsing file...'; // Give initial feedback
+                    dropZone.classList.add('has-file');
+                } else {
+                    dropZone.classList.remove('has-file');
+                    fileNameDisplay.textContent = '';
+                    fileInfoDisplay.textContent = ''; // Clear info
+                }
+            }
+
+            firmwareFileInput.addEventListener('change', () => {
+                if (firmwareFileInput.files.length > 0) {
+                    updateFileDisplay(firmwareFileInput.files[0]);
+                } else {
+                    updateFileDisplay(null);
+                }
+            });
+
+            // --- NEW: Listen for custom event with parsed data ---
+            firmwareFileInput.addEventListener('firmware:info', (event) => {
+                const { fileSize, startAddress } = event.detail;
+                if (fileSize) {
+                    let infoText = `Size: ${fileSize} bytes`;
+                    if (startAddress !== null) {
+                        infoText += ` / Start: 0x${startAddress.toString(16).toUpperCase()}`;
+                    }
+                    fileInfoDisplay.textContent = infoText;
+                } else {
+                    fileInfoDisplay.textContent = 'Error parsing file!';
+                }
+            });
+
+            dropZone.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                dropZone.classList.add('is-dragging');
+            });
+
+            dropZone.addEventListener('dragleave', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                dropZone.classList.remove('is-dragging');
+            });
+
+            dropZone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                dropZone.classList.remove('is-dragging');
+
+                const files = event.dataTransfer.files;
+                if (files.length > 0) {
+                    const validFile = Array.from(files).find(file =>
+                        file.name.toLowerCase().endsWith('.bin') || file.name.toLowerCase().endsWith('.hex')
+                    );
+
+                    if (validFile) {
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(validFile);
+                        firmwareFileInput.files = dataTransfer.files;
+                        firmwareFileInput.dispatchEvent(new Event('change'));
+                    } else {
+                        const previousText = fileNameDisplay.textContent;
+                        const hadFile = dropZone.classList.contains('has-file');
+
+                        fileNameDisplay.textContent = 'Invalid file type!';
+                        dropZone.classList.add('has-file', 'invalid');
+
+                        setTimeout(() => {
+                           dropZone.classList.remove('invalid');
+                           if (hadFile) {
+                               fileNameDisplay.textContent = previousText;
+                           } else {
+                               dropZone.classList.remove('has-file');
+                               fileNameDisplay.textContent = '';
+                           }
+                        }, 2000);
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

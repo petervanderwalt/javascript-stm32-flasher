@@ -70,9 +70,7 @@ var device = null;
     }
 
     async function fixInterfaceNames(device_, interfaces) {
-        // Check if any interface names were not read correctly
         if (interfaces.some(intf => (intf.name == null))) {
-            // Manually retrieve the interface name string descriptors
             let tempDevice = new dfu.Device(device_, interfaces[0]);
             await tempDevice.device_.open();
             await tempDevice.device_.selectConfiguration(1);
@@ -110,15 +108,13 @@ var device = null;
             label.textContent = formatDFUInterfaceAlternate(interfaces[i]);
             label.className = "radio"
             label.setAttribute("for", "interface" + i);
-            label.prepend(radio); // Prepend radio button inside label
+            label.prepend(radio);
 
             form.insertBefore(label, buttonContainer);
         }
     }
 
     function getDFUDescriptorProperties(device) {
-        // Attempt to read the DFU functional descriptor
-        // TODO: read the selected configuration's descriptor
         return device.readConfigurationDescriptor(0).then(
             data => {
                 let configDesc = dfu.parseConfigurationDescriptor(data);
@@ -151,7 +147,6 @@ var device = null;
         );
     }
 
-    // Current log div element to append to
     let logContext = null;
     let downloadProgress;
 
@@ -239,7 +234,7 @@ var device = null;
 
         const totalSize = maxAddr - minAddr;
         const binary = new Uint8Array(totalSize);
-        binary.fill(0xFF); // Fill with default value for flash memory
+        binary.fill(0xFF);
 
         for (const seg of segments) {
             binary.set(seg.data, seg.address - minAddr);
@@ -282,22 +277,22 @@ var device = null;
             }
 
             switch (recordType) {
-                case 0x00: // Data Record
+                case 0x00:
                     const fullAddress = (extendedLinearAddress << 16) | address;
                     segments.push({ address: fullAddress, data: new Uint8Array(dataBytes) });
                     break;
-                case 0x01: // End of File
+                case 0x01:
                     return processSegments(segments);
-                case 0x02: // Extended Segment Address Record
+                case 0x02:
                     console.warn("Ignoring Extended Segment Address Record (02)");
                     break;
-                case 0x03: // Start Segment Address Record
-                    break; // Not needed for binary conversion
-                case 0x04: // Extended Linear Address Record
+                case 0x03:
+                    break;
+                case 0x04:
                     extendedLinearAddress = (dataBytes[0] << 8) | dataBytes[1];
                     break;
-                case 0x05: // Start Linear Address Record
-                    break; // Not needed for binary conversion
+                case 0x05:
+                    break;
                 default:
                     console.warn(`Unknown record type: ${recordType}`);
                     break;
@@ -330,19 +325,31 @@ var device = null;
         }
 
         let configForm = document.querySelector("#configForm");
-
         let transferSizeField = document.querySelector("#transferSize");
         let transferSize = parseInt(transferSizeField.value);
 
+        let dfuseFieldsDiv = document.querySelector("#dfuseFields");
         let dfuseStartAddressField = document.querySelector("#dfuseStartAddress");
+        dfuseFieldsDiv.hidden = true;
 
         let firmwareFileField = document.querySelector("#firmwareFile");
         let firmwareFile = null;
+        firmwareFileField.disabled = false;
 
         let downloadLog = document.querySelector("#downloadLog");
         downloadProgress = document.querySelector("#downloadProgress");
 
         let manifestationTolerant = true;
+        let isDeviceReady = false;
+        let isFirmwareLoaded = false;
+
+        function updateFlashButtonState() {
+            if (isDeviceReady && isFirmwareLoaded) {
+                downloadButton.disabled = false;
+            } else {
+                downloadButton.disabled = true;
+            }
+        }
 
         function onDisconnect(reason) {
             if (reason) {
@@ -351,12 +358,17 @@ var device = null;
                 statusDisplay.textContent = "Disconnected";
             }
 
+            isDeviceReady = false;
+            updateFlashButtonState();
+
             connectButton.textContent = "Select DFU device";
+            connectButton.classList.remove('btn-danger');
+            connectButton.classList.add('btn-primary');
+
             infoDisplay.textContent = "Not connected";
             dfuDisplay.textContent = "";
             detachButton.style.display = 'none';
-            downloadButton.disabled = true;
-            firmwareFileField.disabled = true;
+            dfuseFieldsDiv.hidden = true;
         }
 
         function onUnexpectedDisconnect(event) {
@@ -397,11 +409,18 @@ var device = null;
                     manifestationTolerant = desc.ManifestationTolerant;
                 }
 
-                if (device.settings.alternate.interfaceProtocol == 0x02) {
-                    if (!desc.CanDnload) {
-                        downloadButton.disabled = true;
+                if (device.settings.alternate.interfaceProtocol == 0x02 && desc.CanDnload) {
+                    isDeviceReady = true;
+                    detachButton.style.display = 'none';
+                } else {
+                    isDeviceReady = false;
+                    if (device.settings.alternate.interfaceProtocol == 0x01) {
+                       detachButton.style.display = 'inline-block';
+                    } else {
+                       detachButton.style.display = 'none';
                     }
                 }
+                updateFlashButtonState();
 
                 if (desc.DFUVersion == 0x011a && device.settings.alternate.interfaceProtocol == 0x02) {
                     device = new dfuse.Device(device.device_, device.settings);
@@ -432,7 +451,11 @@ var device = null;
             clearLog(downloadLog);
 
             statusDisplay.textContent = `Connected to ${device.device_.productName || "Untitled Device"}`;
+
             connectButton.textContent = 'Disconnect';
+            connectButton.classList.remove('btn-primary');
+            connectButton.classList.add('btn-danger');
+
             infoDisplay.textContent = (
                 `Name: ${device.device_.productName || "N/A"}\n` +
                 `MFG: ${device.device_.manufacturerName || "N/A"}\n` +
@@ -440,18 +463,7 @@ var device = null;
                 formatDFUSummary(device) + "\n" + memorySummary
             );
 
-            if (device.settings.alternate.interfaceProtocol == 0x01) {
-                detachButton.style.display = 'inline-block';
-                downloadButton.disabled = true;
-                firmwareFileField.disabled = true;
-            } else {
-                detachButton.style.display = 'none';
-                downloadButton.disabled = false;
-                firmwareFileField.disabled = false;
-            }
-
             if (device.memoryInfo) {
-                let dfuseFieldsDiv = document.querySelector("#dfuseFields")
                 dfuseFieldsDiv.hidden = false;
                 dfuseStartAddressField.disabled = false;
                 let segment = device.getFirstWritableSegment();
@@ -460,7 +472,6 @@ var device = null;
                     dfuseStartAddressField.value = "0x" + segment.start.toString(16);
                 }
             } else {
-                let dfuseFieldsDiv = document.querySelector("#dfuseFields")
                 dfuseFieldsDiv.hidden = true;
                 dfuseStartAddressField.disabled = true;
             }
@@ -562,8 +573,14 @@ var device = null;
             }
         });
 
+        firmwareFileField.addEventListener("click", function() {
+            this.value = null;
+        });
+
         firmwareFileField.addEventListener("change", function() {
             firmwareFile = null;
+            isFirmwareLoaded = false;
+
             if (firmwareFileField.files.length > 0) {
                 let file = firmwareFileField.files[0];
                 let reader = new FileReader();
@@ -580,9 +597,22 @@ var device = null;
                                dfuseStartAddressField.value = "0x" + result.startAddress.toString(16);
                                dfuseStartAddressField.dispatchEvent(new Event('change'));
                             }
+                            // --- MODIFIED: Dispatch custom event with info ---
+                            const event = new CustomEvent('firmware:info', {
+                                detail: {
+                                    fileSize: firmwareFile.byteLength,
+                                    startAddress: result.startAddress
+                                }
+                            });
+                            firmwareFileField.dispatchEvent(event);
+                            isFirmwareLoaded = true;
                         } catch (e) {
                             logError(`Error parsing HEX file: ${e.message}`);
                             firmwareFile = null;
+                            isFirmwareLoaded = false;
+                            firmwareFileField.dispatchEvent(new CustomEvent('firmware:info', { detail: {} }));
+                        } finally {
+                            updateFlashButtonState();
                         }
                     };
                     reader.readAsText(file);
@@ -590,9 +620,22 @@ var device = null;
                     reader.onload = function() {
                         firmwareFile = reader.result;
                         logInfo(`Loaded BIN file: ${file.name}, Size: ${firmwareFile.byteLength} bytes`);
+                        // --- MODIFIED: Dispatch custom event with info ---
+                        const event = new CustomEvent('firmware:info', {
+                            detail: {
+                                fileSize: firmwareFile.byteLength,
+                                startAddress: null // .bin files don't have a start address
+                            }
+                        });
+                        firmwareFileField.dispatchEvent(event);
+                        isFirmwareLoaded = true;
+                        updateFlashButtonState();
                     };
                     reader.readAsArrayBuffer(file);
                 }
+            } else {
+                updateFlashButtonState();
+                firmwareFileField.dispatchEvent(new CustomEvent('firmware:info', { detail: {} }));
             }
         });
 
@@ -605,34 +648,32 @@ var device = null;
             }
 
             if (device && firmwareFile != null) {
-                setLogContext(downloadLog);
+                downloadButton.disabled = true;
+                downloadButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Flashing...`;
+
                 try {
-                    let status = await device.getStatus();
-                    if (status.state == dfu.dfuERROR) {
-                        await device.clearStatus();
+                    setLogContext(downloadLog);
+                    try {
+                        let status = await device.getStatus();
+                        if (status.state == dfu.dfuERROR) {
+                            await device.clearStatus();
+                        }
+                    } catch (error) {
+                        device.logWarning("Failed to clear status");
+                    }
+                    await device.do_download(transferSize, firmwareFile, manifestationTolerant);
+                    logInfo("Done!");
+                    if (!manifestationTolerant) {
+                        await device.waitDisconnected(5000);
+                        onDisconnect();
+                        device = null;
                     }
                 } catch (error) {
-                    device.logWarning("Failed to clear status");
+                    logError(error);
+                } finally {
+                    downloadButton.innerHTML = `<i class="bi bi-hdd-fill"></i> Flash Firmware`;
+                    updateFlashButtonState();
                 }
-                await device.do_download(transferSize, firmwareFile, manifestationTolerant).then(
-                    () => {
-                        logInfo("Done!");
-                        if (!manifestationTolerant) {
-                            device.waitDisconnected(5000).then(
-                                dev => {
-                                    onDisconnect();
-                                    device = null;
-                                },
-                                error => {
-                                    console.log("Device unexpectedly tolerated manifestation.");
-                                }
-                            );
-                        }
-                    },
-                    error => {
-                        logError(error);
-                    }
-                )
             }
         });
 
